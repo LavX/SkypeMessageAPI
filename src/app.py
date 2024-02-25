@@ -6,4 +6,4 @@ app = Flask(__name__)
 app.register_blueprint(custom_messaging)
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(debug=True)

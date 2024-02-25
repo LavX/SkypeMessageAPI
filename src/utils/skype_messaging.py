@@ -3,8 +3,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
-SESSION_FILE = 'skype_session.skype'  # Define a session file name
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SESSION_FILE = os.path.join(BASE_DIR, 'skype_session.skype')  # Define a session file name
 
 def send_skype_message(group_id, message):
     # Attempt to load an existing session.
