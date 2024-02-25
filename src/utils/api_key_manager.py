@@ -3,10 +3,17 @@ import secrets
 import argparse
 from functools import wraps
 from flask import request, jsonify
+import os
+
+# Define the path to the database
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATABASE_PATH = os.path.join(BASE_DIR, 'api_keys.db')
 
 # Database initialization
 def init_db():
-    conn = sqlite3.connect('api_keys.db')
+    print(f"Attempting to connect to database at: {DATABASE_PATH}")  # Debugging line
+
+    conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS api_keys (
@@ -24,7 +31,7 @@ def generate_api_key():
 # Add an API key
 def add_api_key():
     key = generate_api_key()
-    conn = sqlite3.connect('api_keys.db')
+    conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
     c.execute('INSERT INTO api_keys (key, active) VALUES (?, ?)', (key, 1))
     conn.commit()
@@ -33,7 +40,7 @@ def add_api_key():
 
 # Remove (deactivate) an API key
 def remove_api_key(key):
-    conn = sqlite3.connect('api_keys.db')
+    conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
     c.execute('UPDATE api_keys SET active = 0 WHERE key = ?', (key,))
     conn.commit()
@@ -41,7 +48,7 @@ def remove_api_key(key):
 
 # Check if an API key is valid and active
 def is_valid_key(key):
-    conn = sqlite3.connect('api_keys.db')
+    conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
     c.execute('SELECT active FROM api_keys WHERE key = ? AND active = 1', (key,))
     result = c.fetchone()
