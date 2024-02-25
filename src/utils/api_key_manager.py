@@ -11,8 +11,6 @@ DATABASE_PATH = os.path.join(BASE_DIR, 'api_keys.db')
 
 # Database initialization
 def init_db():
-    print(f"Attempting to connect to database at: {DATABASE_PATH}")  # Debugging line
-
     conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
     c.execute('''
