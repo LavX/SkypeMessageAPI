@@ -7,7 +7,7 @@ import os
 
 # Define the path to the database
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_PATH = os.path.join(BASE_DIR, 'api_keys.db')
+DATABASE_PATH = os.path.join(BASE_DIR, 'db', 'api_keys.db')
 
 # Database initialization
 def init_db():
