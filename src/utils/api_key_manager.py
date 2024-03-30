@@ -21,10 +21,6 @@ DATABASE_PATH = os.path.join(BASE_DIR, 'db', 'api_keys.db')
 # Use MongoDB if ENABLE_MONGODB is set to 'true', else use SQLite
 USE_MONGODB = os.getenv('ENABLE_MONGODB', 'false').lower() == 'true'
 
-if mongodb_connector.enabled:
-    mongodb_connector.connect()
-    logger.info("Using MongoDB")
-
 # Database initialization
 def init_db():
     if not USE_MONGODB:

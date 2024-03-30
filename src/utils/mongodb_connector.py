@@ -41,7 +41,7 @@ class MongoDBConnector:
             logger.error(f"Failed to connect to MongoDB: {e}")
 
     def insert_message(self, collection_name, document):
-        if not self.db:
+        if self.db is None:
             logger.warning("Attempted to insert message without a MongoDB connection")
             return False
         try:
@@ -52,6 +52,9 @@ class MongoDBConnector:
         except Exception as e:
             logger.error(f"Failed to insert document: {e}")
             return False
-
+    
 # Create the MongoDBConnector instance
 mongodb_connector = MongoDBConnector()
+if mongodb_connector.enabled:
+    mongodb_connector.connect()
+    logger.info("Using MongoDB")
