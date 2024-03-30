@@ -83,10 +83,11 @@ def send_fixed_message():
         if reply and os.getenv('ENABLE_MONGODB', 'false').lower() == 'true':
             logger.info(f"Logging reply to MongoDB: {reply}")
             try:
-                log_message_to_mongodb(timestamp, session_id, unique_id, reply=reply)
+                log_message_to_mongodb(timestamp, session_id, unique_id, user_message, reply=reply)
             except Exception as e: 
                 logger.error(f"Failed to log reply to MongoDB: {e}")
-            return jsonify({"message": reply}), 200
+            response_message = {"message": reply.get("message")}
+            return jsonify(response_message), 200
     else:
         logger.error("Timeout. Try again or contact administrator")
         return jsonify({"message": "Timeout. Try again or contact administrator"}), 500

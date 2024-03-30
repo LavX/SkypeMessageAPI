@@ -4,7 +4,10 @@ import os
 import time
 from dotenv import load_dotenv
 import logging
-from threading import Thread
+import json
+import html
+import re
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('SkypeMessaging')
@@ -73,18 +76,32 @@ class SimpleSkypeEventLoop(SkypeEventLoop):
             logger.info(f"New message received: {event.msg.content}")
             self.received_messages.append(event.msg)
 
+
 def fetch_skype_reply(group_id, unique_id, timeout=30):
     event_loop = SimpleSkypeEventLoop()
     start_time = time.time()
-    found_message = None
+    found_message_json = None
 
     logger.info(f"Listening for replies in group {group_id} with unique_id: {unique_id}")
-    while time.time() - start_time < timeout and found_message is None:
+    while time.time() - start_time < timeout and found_message_json is None:
         event_loop.cycle()  # Process any pending events
         for message in event_loop.received_messages:
             if hasattr(message, 'chat') and message.chat.id == group_id and unique_id in message.content:
-                logger.info(f"Found reply message: {message.content}")
-                found_message = message.content
-                break
+                # Extract JSON string from the message content
+                json_str_match = re.search(r'<code class="language-json">(.*?)</code>', message.content, re.DOTALL)
+                if json_str_match:
+                    json_str = json_str_match.group(1)
+                    # Decode HTML entities in the JSON string
+                    json_str_decoded = html.unescape(json_str)
+                    try:
+                        # Try to parse the decoded JSON string
+                        message_json = json.loads(json_str_decoded)
+                        logger.info(f"Found reply message: {json_str_decoded}")
+                        found_message_json = message_json
+                        break
+                    except json.JSONDecodeError as e:
+                        # Handle the case where json_str_decoded is not valid JSON
+                        logger.error(f"Error parsing message content as JSON: {e}")
+                        continue
         time.sleep(1)  # Prevent tight looping
-    return found_message
+    return found_message_json
