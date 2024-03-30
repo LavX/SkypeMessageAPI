@@ -21,7 +21,7 @@ COPY ./src/.env /app/.env
 
 # Define the command to run your application
 # Note: Adjust the number of workers and threads based on your workload
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--threads", "2", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "3", "--threads", "2", "app:app"]
 
 # Expose the port the app runs on
 EXPOSE 8000
