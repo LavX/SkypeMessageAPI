@@ -4,35 +4,40 @@ import os
 import time
 from dotenv import load_dotenv
 import logging
+from threading import Thread
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('SkypeMessaging')
 
 load_dotenv()
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SESSION_FILE = os.path.join(BASE_DIR, 'skype_session.skype')  # Define a session file name
+
+# Skype credentials and session file path
+SKYPE_USERNAME = os.getenv("SKYPE_USERNAME")
+SKYPE_PASSWORD = os.getenv("SKYPE_PASSWORD")
+SESSION_FILE = 'skype_session.skype'
 
 # Initialize a global Skype object
 global_skype = None
 
 def get_skype_instance():
-    logger.info("Getting Skype instance")
     global global_skype
     if global_skype and global_skype.conn.connected:
+        logger.info("Skype instance is already connected.")
         return global_skype
 
     if os.path.exists(SESSION_FILE):
         try:
-            logger.info("Loading Skype session from file")
-            global_skype = Skype(tokenFile=SESSION_FILE)
+            logger.info("Loading Skype session from file.")
+            global_skype = Skype(tokenFile=SESSION_FILE)  # Use the token file to authenticate
             return global_skype
         except SkypeAuthException:
-            logger.error("Failed to load Skype session from file")
+            logger.error("Failed to load Skype session from file. Attempting new login.")
             global_skype = None
 
     if global_skype is None:
         try:
-            logger.info("Creating new Skype session")
+            logger.info("Creating new Skype session.")
             global_skype = Skype(os.getenv("SKYPE_USERNAME"), os.getenv("SKYPE_PASSWORD"), SESSION_FILE)
             return global_skype
         except SkypeAuthException as e:
@@ -56,44 +61,30 @@ def send_skype_message(group_id, message):
         logger.error(f"Error in Skype Messaging: {e}")
         print(f"Error in Skype Messaging: {e}")
         return False
-
-class SkypeMessagingEventLoop(SkypeEventLoop):
-    def __init__(self, skype_instance, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.skype = skype_instance
+    
+class SimpleSkypeEventLoop(SkypeEventLoop):
+    def __init__(self):
+        # Initialize the SkypeEventLoop with the username, password, and token file
+        super().__init__(SKYPE_USERNAME, SKYPE_PASSWORD, SESSION_FILE)
         self.received_messages = []
-        logger.info("SkypeMessagingEventLoop initialized")
 
     def onEvent(self, event):
         if isinstance(event, SkypeNewMessageEvent):
+            logger.info(f"New message received: {event.msg.content}")
             self.received_messages.append(event.msg)
-            logger.info(f"Received message: {event.msg.content}")
 
 def fetch_skype_reply(group_id, unique_id, timeout=30):
-    skype = get_skype_instance()
-    if skype is None:
-        print("Failed to get Skype instance for fetching reply")
-        logger.error("Failed to get Skype instance for fetching reply")
-        return None
-
-    skype_loop = SkypeMessagingEventLoop(skype)
+    event_loop = SimpleSkypeEventLoop()
     start_time = time.time()
-    skype_loop.setDaemon(True)
-    skype_loop.start()
+    found_message = None
 
-    try:
-        # Give some time for the message to be replied to
-        while time.time() - start_time < timeout:
-            logger.info("Checking for messages")
-            for message in skype_loop.received_messages:
-                if unique_id in message.content:
-                    logger.info(f"Found reply message: {message.content}")
-                    skype_loop.stop()
-                    return message.content
-            time.sleep(1)  # Check for messages every second
-    finally:
-        logger.info("Stopping Skype event loop")
-        skype_loop.stop()
-
-    logger.info("No reply message found")
-    return None
+    logger.info(f"Listening for replies in group {group_id} with unique_id: {unique_id}")
+    while time.time() - start_time < timeout and found_message is None:
+        event_loop.cycle()  # Process any pending events
+        for message in event_loop.received_messages:
+            if hasattr(message, 'chat') and message.chat.id == group_id and unique_id in message.content:
+                logger.info(f"Found reply message: {message.content}")
+                found_message = message.content
+                break
+        time.sleep(1)  # Prevent tight looping
+    return found_message
