@@ -2,11 +2,13 @@
 from skpy import Skype, SkypeAuthException, SkypeEventLoop, SkypeNewMessageEvent
 import os
 import time
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import logging
 import json
 import html
 import re
+import pytz
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -65,43 +67,47 @@ def send_skype_message(group_id, message):
         print(f"Error in Skype Messaging: {e}")
         return False
     
-class SimpleSkypeEventLoop(SkypeEventLoop):
-    def __init__(self):
-        # Initialize the SkypeEventLoop with the username, password, and token file
-        super().__init__(SKYPE_USERNAME, SKYPE_PASSWORD, SESSION_FILE)
-        self.received_messages = []
+def fetch_skype_reply(group_id, unique_id, timeout=120):
+    skype = get_skype_instance()
+    if skype is None:
+        logger.error("Failed to get Skype instance.")
+        return None
 
-    def onEvent(self, event):
-        if isinstance(event, SkypeNewMessageEvent):
-            logger.info(f"New message received: {event.msg.content}")
-            self.received_messages.append(event.msg)
+    chat = skype.chats.chat(group_id)
+    # Ensure that both times are in the same timezone for accurate comparison
+    start_fetch_time = datetime.now(pytz.utc)  # Assuming your server is using UTC
 
+    while datetime.now(pytz.utc) - start_fetch_time < timedelta(seconds=timeout):
+        logger.info("Checking for new messages...")
+        messages = chat.getMsgs()  # Fetch the latest batch of messages
+        for message in messages:
+            logger.info(f"Checking message with time: {message.time}")
+            # Convert message time to UTC for accurate comparison
+            message_time_utc = message.time.replace(tzinfo=pytz.utc)
+            logger.info(f"Message time in UTC: {message_time_utc}")
+            logger.info(f"Start fetch time: {start_fetch_time}")
+            if message_time_utc > start_fetch_time:
+                parsed_message = try_parse_message(message)
+                logger.info(f"Parsed message: {parsed_message}")
+                if parsed_message and parsed_message.get('reply_id') == unique_id:
+                    logger.info("Matching message found.")
+                    return parsed_message
+        
+        time.sleep(1)  # Check for new messages every second
 
-def fetch_skype_reply(group_id, unique_id, timeout=30):
-    event_loop = SimpleSkypeEventLoop()
-    start_time = time.time()
-    found_message_json = None
+    logger.info("Timeout reached without finding a matching message.")
+    return None
 
-    logger.info(f"Listening for replies in group {group_id} with unique_id: {unique_id}")
-    while time.time() - start_time < timeout and found_message_json is None:
-        event_loop.cycle()  # Process any pending events
-        for message in event_loop.received_messages:
-            if hasattr(message, 'chat') and message.chat.id == group_id and unique_id in message.content:
-                # Extract JSON string from the message content
-                json_str_match = re.search(r'<code class="language-json">(.*?)</code>', message.content, re.DOTALL)
-                if json_str_match:
-                    json_str = json_str_match.group(1)
-                    # Decode HTML entities in the JSON string
-                    json_str_decoded = html.unescape(json_str)
-                    try:
-                        # Try to parse the decoded JSON string
-                        message_json = json.loads(json_str_decoded)
-                        logger.info(f"Found reply message: {json_str_decoded}")
-                        found_message_json = message_json
-                        break
-                    except json.JSONDecodeError as e:
-                        # Handle the case where json_str_decoded is not valid JSON
-                        logger.error(f"Error parsing message content as JSON: {e}")
-                        continue
-        time.sleep(1)  # Prevent tight looping
-    return found_message_json
+def try_parse_message(message):
+    """Attempt to parse a Skype message's content into JSON, handling HTML-encoded content."""
+    # Extract JSON from the HTML structure
+    json_str_match = re.search(r'<pre><code class="language-json">(.*?)</code></pre>', message.content, re.DOTALL)
+    if json_str_match:
+        json_str = html.unescape(json_str_match.group(1))  # Decode HTML entities
+        try:
+            message_json = json.loads(json_str)
+            return message_json
+        except json.JSONDecodeError as e:
+            logger.error(f"Message content: {json_str}")
+            logger.error(f"Error parsing message content as JSON: {e}")
+    return None
