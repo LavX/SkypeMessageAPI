@@ -24,4 +24,4 @@ COPY ./src/.env /app/.env
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "3", "--threads", "2", "app:app"]
 
 # Expose the port the app runs on
-EXPOSE 8000
+EXPOSE 5000
