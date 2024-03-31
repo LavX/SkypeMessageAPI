@@ -66,7 +66,7 @@ def message_sender():
         logger.info("Checking for messages to send...")
         group_id, message = message_queue.get()
         send_skype_message(group_id, message)
-        time.sleep(5)
+        time.sleep(10)
         message_queue.task_done()
         logger.info("Message sent successfully")
 
