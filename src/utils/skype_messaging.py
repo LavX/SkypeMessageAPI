@@ -35,8 +35,11 @@ global_skype = None
 message_queue = queue.Queue()
 
 
-def session_file_is_old(file_path):
-    """Check if the session file is older than 24 hours."""
+def session_file_is_old_or_missing(file_path):
+    """Check if the session file is older than 24 hours or does not exist."""
+    if not os.path.exists(file_path):
+        logger.info("Session file does not exist.")
+        return True
     last_modified_time = datetime.fromtimestamp(os.path.getmtime(file_path))
     if datetime.now() - last_modified_time > timedelta(hours=24):
         logger.info("Session file is older than 24 hours.")
@@ -59,22 +62,18 @@ def get_skype_instance():
         logger.info("Skype instance is already connected.")
         return global_skype
 
-    if os.path.exists(SESSION_FILE):
-        if session_file_is_old(SESSION_FILE):
-            logger.info("Session file is old, creating a new Skype session.")
-            global_skype = create_new_skype_session()
-            return global_skype
-        try:
-            logger.info("Loading Skype session from file.")
-            global_skype = Skype(tokenFile=SESSION_FILE)  # Use the token file to authenticate
-            return global_skype
-        except SkypeAuthException:
-            logger.error("Failed to load Skype session from file. Attempting new login.")
-            global_skype = None
-
-    if global_skype is None:
+    if session_file_is_old_or_missing(SESSION_FILE):
         global_skype = create_new_skype_session()
-    return global_skype
+        return global_skype
+
+    try:
+        logger.info("Loading Skype session from file.")
+        global_skype = Skype(tokenFile=SESSION_FILE)  # Use the token file to authenticate
+        return global_skype
+    except SkypeAuthException:
+        logger.error("Failed to load Skype session from file. Attempting new login.")
+        global_skype = create_new_skype_session()
+        return global_skype
 
 def message_sender():
     logger.info("Starting message sender thread...")
