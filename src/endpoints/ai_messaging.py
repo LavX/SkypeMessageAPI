@@ -2,7 +2,7 @@
 import os
 import uuid
 from flask import Blueprint, request, jsonify
-from utils.skype_messaging import send_skype_message, fetch_skype_reply
+from utils.skype_messaging import enqueue_message, fetch_skype_reply
 from utils.api_key_manager import require_api_key
 from utils.mongodb_connector import mongodb_connector
 import time
@@ -73,9 +73,9 @@ def send_fixed_message():
             logger.error(f"Failed to log message to MongoDB: {e}")
 
     # Sending the formatted message
-    if not send_skype_message(GROUP_ID, formatted_message):
-        logger.error("Failed to send message")
-        return jsonify({"message": "Failed to send message"}), 500
+    enqueue_message(GROUP_ID, formatted_message)
+    logger.info("Message enqueued successfully")
+
 
     # Attempting to fetch the reply
     reply = fetch_skype_reply(GROUP_ID, unique_id)

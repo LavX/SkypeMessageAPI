@@ -10,13 +10,19 @@ import html
 import re
 import pytz
 from xml.etree import ElementTree as ET
+import threading
+import queue
+
+
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('SkypeMessaging')
 
 load_dotenv()
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 # Skype credentials and session file path
 SKYPE_USERNAME = os.getenv("SKYPE_USERNAME")
@@ -25,6 +31,9 @@ SESSION_FILE = 'skype_session.skype'
 
 # Initialize a global Skype object
 global_skype = None
+
+message_queue = queue.Queue()
+
 
 def get_skype_instance():
     global global_skype
@@ -50,6 +59,20 @@ def get_skype_instance():
             logger.error(f"Skype authentication failed: {e}")
             print(f"Skype authentication failed: {e}")
             return None
+
+def message_sender():
+    logger.info("Starting message sender thread...")
+    while True:
+        logger.info("Checking for messages to send...")
+        group_id, message = message_queue.get()
+        send_skype_message(group_id, message)
+        time.sleep(5)
+        message_queue.task_done()
+        logger.info("Message sent successfully")
+
+def enqueue_message(group_id, message):
+    message_queue.put((group_id, message))
+    
 
 def send_skype_message(group_id, message):
     skype = get_skype_instance()
@@ -126,3 +149,5 @@ def try_parse_message(message):
             logger.error(f"Error parsing message content as JSON: {je}")
     
     return None
+
+threading.Thread(target=message_sender, daemon=True).start()
