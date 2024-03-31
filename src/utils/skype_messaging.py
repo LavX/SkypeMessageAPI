@@ -9,6 +9,7 @@ import json
 import html
 import re
 import pytz
+from xml.etree import ElementTree as ET
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -81,6 +82,7 @@ def fetch_skype_reply(group_id, unique_id, timeout=120):
         logger.info("Checking for new messages...")
         messages = chat.getMsgs()  # Fetch the latest batch of messages
         for message in messages:
+            logger.info(f"Checking message with content: {message.content}")
             logger.info(f"Checking message with time: {message.time}")
             # Convert message time to UTC for accurate comparison
             message_time_utc = message.time.replace(tzinfo=pytz.utc)
@@ -99,15 +101,28 @@ def fetch_skype_reply(group_id, unique_id, timeout=120):
     return None
 
 def try_parse_message(message):
-    """Attempt to parse a Skype message's content into JSON, handling HTML-encoded content."""
-    # Extract JSON from the HTML structure
-    json_str_match = re.search(r'<pre><code class="language-json">(.*?)</code></pre>', message.content, re.DOTALL)
+    """Attempt to parse a Skype message's content into JSON, handling both encapsulated and HTML-encoded content."""
+    try:
+        # Attempt to parse the content as XML to extract the inner JSON string
+        root = ET.fromstring(message.content)
+        if root.text:
+            json_str = html.unescape(root.text)  # Decode HTML entities
+            message_json = json.loads(json_str)
+            return message_json
+    except ET.ParseError as e:
+        # If parsing as XML fails, log the error and fall back to regex extraction
+        logger.error(f"Error parsing message content as XML: {e}")
+    except json.JSONDecodeError as je:
+        logger.error(f"Error parsing extracted content as JSON: {je}")
+    
+    # Fallback method: Use regex to directly extract JSON string if XML parsing fails
+    json_str_match = re.search(r'<bing-response.*?>(.*?)</bing-response>', message.content, re.DOTALL)
     if json_str_match:
         json_str = html.unescape(json_str_match.group(1))  # Decode HTML entities
         try:
             message_json = json.loads(json_str)
             return message_json
-        except json.JSONDecodeError as e:
-            logger.error(f"Message content: {json_str}")
-            logger.error(f"Error parsing message content as JSON: {e}")
+        except json.JSONDecodeError as je:
+            logger.error(f"Error parsing message content as JSON: {je}")
+    
     return None
