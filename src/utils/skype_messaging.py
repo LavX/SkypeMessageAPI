@@ -66,7 +66,7 @@ def message_sender():
         logger.info("Checking for messages to send...")
         group_id, message = message_queue.get()
         send_skype_message(group_id, message)
-        time.sleep(10)
+        time.sleep(30)
         message_queue.task_done()
         logger.info("Message sent successfully")
 
@@ -91,7 +91,7 @@ def send_skype_message(group_id, message):
         print(f"Error in Skype Messaging: {e}")
         return False
     
-def fetch_skype_reply(group_id, unique_id, timeout=45):
+def fetch_skype_reply(group_id, unique_id, timeout=120):
     skype = get_skype_instance()
     if skype is None:
         logger.error("Failed to get Skype instance.")
@@ -102,16 +102,16 @@ def fetch_skype_reply(group_id, unique_id, timeout=45):
     start_fetch_time = datetime.now(pytz.utc)  # Assuming your server is using UTC
 
     while datetime.now(pytz.utc) - start_fetch_time < timedelta(seconds=timeout):
-        logger.info("Checking for new messages...")
+        # logger.info("Checking for new messages...")
         messages = chat.getMsgs()  # Fetch the latest batch of messages
         for message in messages:
-            logger.info(f"Checking message with content: {message.content}")
-            logger.info(f"Checking message with time: {message.time}")
+            # logger.info(f"Checking message with time: {message.time}")
             # Convert message time to UTC for accurate comparison
             message_time_utc = message.time.replace(tzinfo=pytz.utc)
-            logger.info(f"Message time in UTC: {message_time_utc}")
-            logger.info(f"Start fetch time: {start_fetch_time}")
+            # logger.info(f"Message time in UTC: {message_time_utc}")
+            # logger.info(f"Start fetch time: {start_fetch_time}")
             if message_time_utc > start_fetch_time:
+                logger.info(f"Checking message with content: {message.content}")
                 parsed_message = try_parse_message(message)
                 logger.info(f"Parsed message: {parsed_message}")
                 if parsed_message and parsed_message.get('reply_id') == unique_id:
@@ -123,31 +123,72 @@ def fetch_skype_reply(group_id, unique_id, timeout=45):
     logger.info("Timeout reached without finding a matching message.")
     return None
 
-def try_parse_message(message):
-    """Attempt to parse a Skype message's content into JSON, handling both encapsulated and HTML-encoded content."""
+def clean_xml_content(content):
+    """Cleans XML content by removing or replacing invalid characters."""
+    # Remove characters before the first "<"
+    content = re.sub(r'^[^<]+', '', content)
+    # Remove characters after the last ">"
+    content = re.sub(r'>[^>]+$', '>', content)
+    # Wrap content in a root element if it contains multiple root elements
     try:
-        # Attempt to parse the content as XML to extract the inner JSON string
-        root = ET.fromstring(message.content)
-        if root.text:
-            json_str = html.unescape(root.text)  # Decode HTML entities
-            message_json = json.loads(json_str)
-            return message_json
+        ET.fromstring(content)
+    except ET.ParseError:
+        content = f'<root>{content}</root>'
+    return content
+
+def extract_json_from_xml(content):
+    """Extracts JSON string from XML content, handling cases where the target text may be nested."""
+    try:
+        root = ET.fromstring(content)
+        # Check if root.text is None and handle accordingly
+        if root.text is not None:
+            json_str = html.unescape(root.text)
+        else:
+            # If root.text is None, look for JSON within child elements
+            # This is a simplified example; you may need to adjust based on your XML structure
+            json_str = ''
+            for child in root:
+                if child.text:
+                    json_str += html.unescape(child.text)
+                # Optionally, handle nested structures or attributes if your data requires it
+        return json_str
     except ET.ParseError as e:
-        # If parsing as XML fails, log the error and fall back to regex extraction
         logger.error(f"Error parsing message content as XML: {e}")
-    except json.JSONDecodeError as je:
-        logger.error(f"Error parsing extracted content as JSON: {je}")
-    
-    # Fallback method: Use regex to directly extract JSON string if XML parsing fails
-    json_str_match = re.search(r'<bing-response.*?>(.*?)</bing-response>', message.content, re.DOTALL)
-    if json_str_match:
-        json_str = html.unescape(json_str_match.group(1))  # Decode HTML entities
+        return None
+
+def try_parse_message(content):
+    """Attempts to parse a Skype message's content into JSON."""
+    # Convert content to string if it's not already
+    if not isinstance(content, str):
+        content = str(content)
+
+    content = clean_xml_content(content)
+
+    # Attempt to directly parse the content as JSON
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass  # Continue to try other methods if direct JSON parsing fails
+
+    # Attempt to extract JSON from XML content
+    json_str = extract_json_from_xml(content)
+    if json_str:
         try:
-            message_json = json.loads(json_str)
-            return message_json
-        except json.JSONDecodeError as je:
-            logger.error(f"Error parsing message content as JSON: {je}")
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing content as JSON: {e}")
     
+    # Attempt to extract and parse JSON using regex
+    json_str_match = re.search(r'<pre><code class="language-json">(.*?)</code></pre>', content, re.DOTALL)
+    if json_str_match:
+        json_str = html.unescape(json_str_match.group(1))
+        # Remove invalid control characters
+        json_str = re.sub(r'[\x00-\x1f]+', '', json_str)
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing message content as JSON after regex extraction: {e}")
+
     return None
 
 threading.Thread(target=message_sender, daemon=True).start()
