@@ -35,6 +35,24 @@ global_skype = None
 message_queue = queue.Queue()
 
 
+def session_file_is_old(file_path):
+    """Check if the session file is older than 24 hours."""
+    last_modified_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+    if datetime.now() - last_modified_time > timedelta(hours=24):
+        logger.info("Session file is older than 24 hours.")
+        return True
+    return False
+
+def create_new_skype_session():
+    """Create a new Skype session and return the instance."""
+    try:
+        logger.info("Creating new Skype session.")
+        return Skype(os.getenv("SKYPE_USERNAME"), os.getenv("SKYPE_PASSWORD"), SESSION_FILE)
+    except SkypeAuthException as e:
+        logger.error(f"Skype authentication failed: {e}")
+        print(f"Skype authentication failed: {e}")
+        return None
+
 def get_skype_instance():
     global global_skype
     if global_skype and global_skype.conn.connected:
@@ -42,6 +60,10 @@ def get_skype_instance():
         return global_skype
 
     if os.path.exists(SESSION_FILE):
+        if session_file_is_old(SESSION_FILE):
+            logger.info("Session file is old, creating a new Skype session.")
+            global_skype = create_new_skype_session()
+            return global_skype
         try:
             logger.info("Loading Skype session from file.")
             global_skype = Skype(tokenFile=SESSION_FILE)  # Use the token file to authenticate
@@ -51,14 +73,8 @@ def get_skype_instance():
             global_skype = None
 
     if global_skype is None:
-        try:
-            logger.info("Creating new Skype session.")
-            global_skype = Skype(os.getenv("SKYPE_USERNAME"), os.getenv("SKYPE_PASSWORD"), SESSION_FILE)
-            return global_skype
-        except SkypeAuthException as e:
-            logger.error(f"Skype authentication failed: {e}")
-            print(f"Skype authentication failed: {e}")
-            return None
+        global_skype = create_new_skype_session()
+    return global_skype
 
 def message_sender():
     logger.info("Starting message sender thread...")
