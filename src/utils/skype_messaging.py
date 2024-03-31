@@ -91,7 +91,7 @@ def send_skype_message(group_id, message):
         print(f"Error in Skype Messaging: {e}")
         return False
     
-def fetch_skype_reply(group_id, unique_id, timeout=120):
+def fetch_skype_reply(group_id, unique_id, timeout=45):
     skype = get_skype_instance()
     if skype is None:
         logger.error("Failed to get Skype instance.")
